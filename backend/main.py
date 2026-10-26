@@ -38,8 +38,14 @@ app.add_middleware(
 class KeyConfig(BaseModel):
     api_key: str
 
-@app.get("/")
-def read_root():
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+
+@app.get("/api/health")
+def read_health():
     return {
         "platform": "AI-Powered Multimodal Construction Intelligence Platform",
         "status": "Online & Operational",
@@ -125,6 +131,33 @@ def query_knowledge(req: KnowledgeQueryRequest):
         return ai_engine.query_knowledge_assistant(req)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Knowledge query error: {str(e)}")
+
+# If frontend/dist exists (single-service deployment), serve React SPA
+if os.path.exists(DIST_DIR):
+    assets_dir = os.path.join(DIST_DIR, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="API route not found")
+        file_path = os.path.join(DIST_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(DIST_DIR, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
+        return {"message": "Frontend build not found"}
+else:
+    @app.get("/")
+    def read_root():
+        return {
+            "platform": "AI-Powered Multimodal Construction Intelligence Platform",
+            "status": "Online & Operational",
+            "version": "1.0.0",
+            "ai_engine_mode": "Gemini Multimodal Live" if ai_engine.has_active_gemini_key() else "Autonomous Multimodal Heuristic Engine"
+        }
 
 if __name__ == "__main__":
     import uvicorn
